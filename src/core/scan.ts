@@ -15,16 +15,33 @@ export type Source = {
 
 export type ScanResult = { repository: Repository; skills: Skill[]; warnings: string[] };
 
-/** fetch → find → parse. Nothing is stored: the result is all there is. */
+/** fetch → find → parse → merge copies. Nothing is stored: the result is all there is. */
 export async function scan(source: Source): Promise<ScanResult> {
-  const files = findSkills(source.paths, source.repository.name);
+  const files = findSkills(source.paths);
   // The files are read at the same time: on GitHub, each one is a request.
   const results = await Promise.all(files.map((file) => readSkill(source, file)));
+  const read = results.flatMap((result, index) => (result.skill ? [{ skill: result.skill, file: files[index] }] : []));
   return {
     repository: source.repository,
-    skills: sortSkills(results.flatMap((result) => (result.skill ? [result.skill] : []))),
+    skills: sortSkills(mergeCopies(read)),
     warnings: [...source.warnings, ...results.flatMap((result) => (result.warning ? [result.warning] : []))],
   };
+}
+
+/**
+ * One skill in several skills roots of the same directory, with the same name and description,
+ * is listed once: at the first root in SKILL_ROOTS, with the others as its copies.
+ */
+function mergeCopies(read: { skill: Skill; file: SkillFile }[]): Skill[] {
+  const byRoot = [...read].sort((a, b) => a.file.root - b.file.root);
+  const originals = new Map<string, Skill>();
+  for (const { skill, file } of byRoot) {
+    const key = JSON.stringify([file.dir, skill.name, skill.description]);
+    const original = originals.get(key);
+    if (original) original.copies.push(skill.path);
+    else originals.set(key, skill);
+  }
+  return [...originals.values()];
 }
 
 async function readSkill(source: Source, file: SkillFile): Promise<{ skill?: Skill; warning?: string }> {
@@ -38,7 +55,7 @@ async function readSkill(source: Source, file: SkillFile): Promise<{ skill?: Ski
     name: parsed.name ?? file.name,
     description: parsed.description,
     commit: source.repository.commit,
-    copies: file.copies,
+    copies: [],
   };
   return { skill, warning: parsed.warning && `${file.path}: ${parsed.warning}` };
 }
