@@ -1,7 +1,7 @@
 // Runs the commands the way the CLI does, with GitHub answering from EXAMPLE below.
 import { fileURLToPath } from 'node:url';
 import { run } from '../src/commands.ts';
-import { openGitHub, parseGitHubUrl } from '../src/core/github.ts';
+import { openGitHub, parseGitHubUrl, type Fetch } from '../src/core/github.ts';
 import { replay, type Recording } from '../src/core/replay.ts';
 import { openDirectory } from '../src/local.ts';
 
@@ -28,12 +28,17 @@ const EXAMPLE: Recording = {
 const github = replay(EXAMPLE);
 
 /** `skill-atlas <args>`, as the CLI runs it, with GitHub answering from EXAMPLE. */
-export async function atlas(args: string[]) {
+export function atlas(args: string[]) {
+  // With a token, through code search, as EXAMPLE answers it.
+  return atlasWith(args, github, 'test');
+}
+
+/** `skill-atlas <args>`, as the CLI runs it, with GitHub answering through `fetch`. */
+export async function atlasWith(args: string[], fetch: Fetch, token?: string) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const code = await run(args, {
-    // With a token, through code search, as EXAMPLE answers it.
-    open: (input) => (parseGitHubUrl(input) ? openGitHub(input, { fetch: github, token: 'test' }) : openDirectory(input)),
+    open: (input) => (parseGitHubUrl(input) ? openGitHub(input, { fetch, token }) : openDirectory(input)),
     print: (text) => stdout.push(text),
     error: (text) => stderr.push(text),
   });
